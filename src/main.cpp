@@ -3,6 +3,8 @@
 #include <time.h> 
 #include "WiFi.h"
 #include <Adafruit_NeoPixel.h>
+#include "esp_adc_cal.h"
+
 
 
 int black = 0;
@@ -55,9 +57,23 @@ void printTime() {
 }
 
 
+void timeKeeping(int delayMS) {
+
+  brightness = analogRead(34)/4096.0*0.9+0.1;
+  Serial.println(brightness);
+  strip.setBrightness(255*brightness);
+
+  unsigned long start = millis()+delayMS;
+  while (start>millis()) {    
+    delay(1);
+  }
+}
+
+
 void setup() {
   Serial.begin(115200);
   while (!Serial); // wait for serial attach
+
 
   Serial.println();
   Serial.println("Initializing LEDS");
@@ -66,7 +82,7 @@ void setup() {
   // this resets all the neopixels to an off state
   strip.begin();
   strip.show();
-
+  strip.setBrightness(255*brightness);
     
     //WiFi.begin("stopbuepf", "stopbuepf");
     WiFi.begin("St.Galler Wireless", "");
@@ -81,7 +97,7 @@ void setup() {
         strip.setPixelColor(i,strip.ColorHSV((i%10)*6553,255,255));
         i++;
         strip.show();
-        delay(100);
+        timeKeeping(100);
     }
 
     Serial.println("");
@@ -165,17 +181,6 @@ void smoothout(int s) {
 
 
 
-void timeKeeping(int delayMS) {
-
-  brightness = analogRead(A0)/1024.0*0.9+0.1;
-  brightness = brightness*pow(brightness,0.5);
-
-  unsigned long start = millis()+delayMS;
-  while (start>millis()) {    
-    delay(1);
-  }
-}
-
 
 
 long waitForIt(long step, long steps) {
@@ -200,7 +205,7 @@ void showMustGoOn() {
     if (state!=1) break;
     hues[last-1] = random(10000)/10000.0;
     vh[last-1] = 0.0;
-    int c = strip.ColorHSV(0xffff*hues[last-1], 255,255);
+    int c = strip.ColorHSV(0xffff*hues[last-1], 255, 255);
     if (waitForIt(step+last, steps)==0) {
       strip.setPixelColor(last-1, c);
       step+=last;
