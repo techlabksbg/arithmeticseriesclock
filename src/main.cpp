@@ -1,12 +1,11 @@
 #include <Arduino.h>
 
-// For ESP8266, on GPIO3 (RX pin on Lolin Board)
-
-#include <NeoPixelBus.h>
 #include <time.h> 
-#include <ESP8266WiFi.h>
+#include "WiFi.h"
+#include <Adafruit_NeoPixel.h>
 
-RgbColor black(0);
+
+int black = 0;
 const uint16_t PixelCount = 150; 
 float brightness = 0.3;
 int state = -1;
@@ -41,11 +40,8 @@ int events[][3] = {
   
 
 
-// Uses GPIO3 alias RX, messes with Serial.read()
-// NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(PixelCount);
-
-// Uses GPIO2 alias D4
-NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(PixelCount, 42); // pin is ignored
+#define PIN 13
+Adafruit_NeoPixel strip(PixelCount, PIN, NEO_RGB + NEO_KHZ800);
 
 float hues[PixelCount];
 float vh[PixelCount];
@@ -68,8 +64,8 @@ void setup() {
   Serial.flush();
 
   // this resets all the neopixels to an off state
-  strip.Begin();
-  strip.Show();
+  strip.begin();
+  strip.show();
 
     
     //WiFi.begin("stopbuepf", "stopbuepf");
@@ -81,10 +77,10 @@ void setup() {
 
     int i=0;
     while(WiFi.status()!= WL_CONNECTED) {
-        Serial.print(WiFi.status());
-        HsbColor cur((i%6)/6.0,1.0, brightness);
-        strip.SetPixelColor(i++,cur);
-        strip.Show();
+        Serial.print(WiFi.status());        
+        strip.setPixelColor(i,strip.ColorHSV((i%10)*6553,255,255));
+        i++;
+        strip.show();
         delay(100);
     }
 
@@ -102,19 +98,10 @@ void setup() {
     delay(1000);
     printTime();
  
-    strip.ClearTo(black,0,PixelCount-1);
+    strip.clear();
 
 }
 
-
-void showColor(RgbColor c) {
-  Serial.print(c.R);
-  Serial.print(" ");
-  Serial.print(c.G);
-  Serial.print(" ");
-  Serial.print(c.B);
-  Serial.print(" ");
-}
 
 long startms;
 long duration;
@@ -171,10 +158,9 @@ void smoothout(int s) {
     hues[i]+=vh[i];
     if (hues[i]>1.0) hues[i]-=1.0;
     if (hues[i]<-1.0) hues[i]+=1.0;
-    HsbColor cur(hues[i],1.0, brightness);
-    strip.SetPixelColor(i,cur);
+    strip.setPixelColor(i,strip.ColorHSV((int)(0xffff*hues[i])),255,255);
   }
-  strip.Show();
+  strip.show();
 }
 
 
@@ -214,9 +200,9 @@ void showMustGoOn() {
     if (state!=1) break;
     hues[last-1] = random(10000)/10000.0;
     vh[last-1] = 0.0;
-    HsbColor c(hues[last-1], 1.0, brightness);
+    int c = strip.ColorHSV(0xffff*hues[last-1], 255,255);
     if (waitForIt(step+last, steps)==0) {
-      strip.SetPixelColor(last-1, c);
+      strip.setPixelColor(last-1, c);
       step+=last;
       Serial.println(String("Fast forward to step=")+step+" at last="+last+"  of steps="+steps);
     } else {
@@ -224,20 +210,20 @@ void showMustGoOn() {
       for (int i=0; i<last; i++) {
         if (state!=1) break;
         step++;
-        strip.SetPixelColor(i,c);
+        strip.setPixelColor(i,c);
         for (int j=1; j<=5; j++) {
           if (i-j>=0) {
-            HsbColor c2(hues[last-1], 1.0, getBr(j));
-            strip.SetPixelColor(i-j,c2);
+            int c2 = strip.ColorHSV((int)(hues[last-1]*0xffff), 255,255);
+            strip.setPixelColor(i-j,c2);
           } else if (last<PixelCount) {
-            HsbColor c2(hues[last], 1.0, getBr(j));
-            strip.SetPixelColor(last+i-j,c2);
+            int c2 = strip.ColorHSV((int)(hues[last]*0xffff), 255,getBr(j)*255);
+            strip.setPixelColor(last+i-j,c2);
           }
         }
         if (i>4) {
-          strip.SetPixelColor(i-5,black);
+          strip.setPixelColor(i-5,black);
         }
-        strip.Show();
+        strip.show();
         for (int j=0; j<1; j++) {
           if (last<PixelCount-1) {
             smoothout(last+1);
@@ -248,16 +234,16 @@ void showMustGoOn() {
     }
   }
   for (int i=0; i<PixelCount; i++) {
-    strip.SetPixelColor(i,black);
+    strip.setPixelColor(i,black);
   }
-  strip.Show();
+  strip.show();
   
 }
 
 void loop() {
   state=-1; // Force initialisation
   checkEvent();
-  if (state == 0) strip.ClearTo(black,0,PixelCount-1);
+  if (state == 0) strip.clear();
   if (state==2) { 
     showMustGoOn();
     Serial.println(String("Show finished with state=")+state);
