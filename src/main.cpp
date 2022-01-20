@@ -81,7 +81,7 @@ void timeKeeping(int delayMS, int last) {
     if (last<PixelCount) {
       smoothout(last+1);
     }
-    delay(5);  // Time to update strip
+    //Serial.println(start-millis());
   }
 }
 
@@ -98,6 +98,7 @@ void setup() {
   // this resets all the neopixels to an off state
   strip.Begin();
   strip.Show();
+  delay(10);
     
     //WiFi.begin("stopbuepf", "stopbuepf");
     WiFi.begin("St.Galler Wireless", "");
@@ -112,6 +113,7 @@ void setup() {
         strip.SetPixelColor(i,HslColor((i%10)*0.1f, 1.0f, 0.5f*brightness));
         i++;
         strip.Show();
+        delay(10);
         timeKeeping(100, PixelCount);
         if (i>=PixelCount) {
           ESP.restart();
@@ -133,7 +135,7 @@ void setup() {
     printTime();
  
     strip.ClearTo(black);
-
+    delay(10);
 }
 
 
@@ -195,6 +197,11 @@ void smoothout(int s) {
     strip.SetPixelColor(i,HslColor(hues[i], 1.0f,0.5f*brightness));
   }
   strip.Show();
+  /* Untested code:
+  while (!strip.CanShow()) {
+    delay(1);
+  } */
+  delay(10);
 }
 
 
@@ -206,6 +213,7 @@ long waitForIt(long step, long steps) {
   long waituntil = startms+localms;
   waituntil -= millis();
   if (waituntil<0) waituntil=0;
+  //Serial.println(waituntil);
   return waituntil;
 }
 
@@ -247,6 +255,7 @@ void showMustGoOn() {
           strip.SetPixelColor(i-5,black);
         }
         strip.Show();
+        delay(10);
         timeKeeping(waitForIt(step, steps), last);
       }
     }
@@ -255,6 +264,7 @@ void showMustGoOn() {
     strip.SetPixelColor(i,black);
   }
   strip.Show();
+  delay(10);
   
 }
 
