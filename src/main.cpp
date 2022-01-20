@@ -99,8 +99,8 @@ void setup() {
   strip.Begin();
   strip.Show();
     
-    WiFi.begin("stopbuepf", "stopbuepf");
-    //WiFi.begin("St.Galler Wireless", "");
+    //WiFi.begin("stopbuepf", "stopbuepf");
+    WiFi.begin("St.Galler Wireless", "");
 
     Serial.println();
     Serial.println();
