@@ -1,6 +1,8 @@
 #include <Arduino.h>
 
 #include <time.h> 
+#include <sys/time.h>
+
 #include "dcf77simple.h"
 #include "NeoPixelBus.h"
 #include "esp_adc_cal.h"
@@ -81,8 +83,9 @@ struct slider {
                         l = 0.5*((pos+1)-x);
                         if (l<0.0) { l=0.0; }
                     }
-                    l = 4*l*l*l;
+                    l = 4*l*l*l*brightness;
                     strip.SetPixelColor(x, HslColor(hue, 1.0, l));
+                    hues[x] = hue;
                 }
             }
         }
@@ -90,31 +93,6 @@ struct slider {
 };
 
 
-
-void printTime() {
-    time_t now;
-    time(&now);
-    struct tm  info;
-    localtime_r(&now, &info);
-    Serial.println(String("Day=")+info.tm_mday+", "+info.tm_hour+":"+info.tm_min+":"+info.tm_sec);
-}
-
-void smoothout(int s);
-
-void timeKeeping(int delayMS, int last) {
-
-  brightness = analogRead(34)/4096.0*0.95+0.05;
-  //Serial.println(brightness);
-  //strip.setBrightness(255*brightness);
-
-  unsigned long start = millis()+delayMS;
-  while (start>millis()) {
-    if (last<PixelCount) {
-      smoothout(last+1);
-    }
-    delay(5);  // Time to update strip
-  }
-}
 
 void dcf2esp() {
   if (DCF77.decode()) {
@@ -125,8 +103,29 @@ void dcf2esp() {
     local.tm_min = DCF77.timeInfo.minute;
     local.tm_sec = DCF77.timeInfo.second;
     const time_t sec = mktime(&local);
-    localtime(&sec); //set time
+    timeval tv;
+    tv.tv_sec = sec;
+    tv.tv_usec = 1000*DCF77.timeInfo.ms;
+    settimeofday(&tv, NULL);
   }
+}
+
+void fakeTime() {
+    tm local;
+    local.tm_year = 123;
+    local.tm_mon = 0;
+    local.tm_mday = 16;
+    
+    local.tm_hour = 15;
+    local.tm_min = 33; // 41;
+    local.tm_sec = 0;
+    const time_t sec = mktime(&local);
+    timeval tv;//= {tv_sec=sec, tv_usec=0};
+    tv.tv_sec = sec;
+    tv.tv_usec = 0;
+
+    Serial.printf("Have sec=%ld\n", sec);
+    settimeofday(&tv, NULL);
 }
 
 void waitForTimeFix()
@@ -171,9 +170,9 @@ struct iterPos {
 // compute the fractional position number, given the fraction [0,1] of a full period
 iterPos iterAndPos(float t) {
   float steps = (PixelCount+1)*(PixelCount)/2*t; // How many total steps to advance
-  int s = int(steps);   // Floor of total steps
+  int s = (int)(steps);   // Floor of total steps
   int x = 2*PixelCount+1;    // helpful constant
-  int n = (int)(0.5*(x)+sqrt(x*x/4-2*s));   // How many interations in [0..PixelCount-1])
+  int n = (int)(0.5*(x-sqrt(x*x-8*s)));   // How many interations in [0..PixelCount-1])
   float pos = steps-(x-n)*n/2;       // How many steps after start (i.e. position of the dot)
   return {n,pos};
 }
@@ -195,8 +194,9 @@ float hsvInterpolate(float h1, float h2, float t) {
 // Diffusing colors 
 void diffuse(int n) {
   for (int i=n+1; i<150; i++) {
-    float t = 0.99;
+    float t = 0.01;
     hues[i] = hsvInterpolate(hues[i], hues[i-1], t);
+    strip.SetPixelColor(i, HslColor(hues[i], 1.0, brightness));
   }
 }
 
@@ -211,6 +211,86 @@ void sliderTest() {
     s.paint((millis()-start)/100.0);
     strip.Show();
     delay(10);
+  }
+}
+
+// Get t in [0,1] of the current period (or -1 if none applies)
+float getCurrentT() {
+  time_t now;
+  time(&now);
+  struct tm  info;
+  localtime_r(&now, &info);
+  struct timeval tv_now;
+  gettimeofday(&tv_now, NULL);
+  
+  int daymins = info.tm_hour*60+info.tm_min;
+  for(int i=0;i<sizeof(events);i++) {
+    int mins = events[i][0]*60+events[i][1];
+    if (daymins>=mins && daymins<mins+events[i][2]) {
+      return ((info.tm_hour*60+info.tm_min-mins)*60+info.tm_sec+tv_now.tv_usec/1e6)/(events[i][2]*60);
+    }
+  }
+  return -1.0;
+}
+
+slider sliders[2];
+
+void initHues() {
+  for (int i=0; i<PixelCount; i++) {
+      hues[i] = random(10000)/10000.0f;
+   }
+  for (int i=0; i<2; i++) {
+    sliders[i].active = false;
+  }
+}
+
+void paintStrip() {
+  float t = getCurrentT();
+  //Serial.printf("Got t=%f  ",t);
+  if (t<0) {
+    strip.ClearTo(black);
+    strip.Show();
+  } else {
+    iterPos a = iterAndPos(t);
+    //Serial.printf("a.iter=%d, a.pos=%f\n", a.iter, a.pos);
+    if (a.iter==0) { // Reset if next period
+      for (int i=0; i<2; i++) {
+        if (sliders[i].last<PixelCount) {
+          sliders[i].active = false;
+        }
+      }
+    }
+    if (!sliders[0].active) {   // Slider 0 not active
+      if (sliders[1].active) {   // Either move slider 1 to 0
+        sliders[0] = sliders[1];
+        sliders[1].active = false;
+      } else {                   // Or make a new slider
+        sliders[0].active = true;
+        sliders[0].hue = random(10000)/10000.0f;
+        sliders[0].last = PixelCount - a.iter;
+      }
+    } else if (sliders[0].last!=PixelCount - a.iter) {  // Slider is active, but not current any more
+      if (!sliders[1].active) {   // Slider 1 is inactive
+        sliders[1].active = true;
+        sliders[1].hue = random(10000)/10000.0f;
+        sliders[1].last = PixelCount - a.iter;
+      } // both active? That's enough ;-)
+    }
+    for (int i=0; i<2; i++) {
+      if (sliders[i].active) {
+        sliders[i].hue+=0.0001;
+        if (sliders[i].hue>=1.0) {
+          sliders[i].hue = 0.0;
+        }
+        if (sliders[i].last==PixelCount - a.iter) {
+          sliders[i].paint(a.pos);
+        } else {
+          sliders[i].paint(a.pos+sliders[i].last);
+        }
+      }
+    }
+    //Serial.println(PixelCount-1 - a.iter);
+    diffuse(PixelCount-1 - a.iter);
   }
 }
 
@@ -231,140 +311,19 @@ void setup() {
   strip.SetPixelColor(2,RgbColor(0,0,255));
   strip.Show();
 
+  setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/ 3", 1); // https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
+  tzset();
+
   DCF77.begin(5);
-  sliderTest();
-  // waitForTimeFix();
-}
-
-
-long startms;
-long duration;
-
-void checkEvent() {
-    time_t now;
-    time(&now);
-    struct tm  info;
-    localtime_r(&now, &info);
-
-  int h = info.tm_hour;
-  int m = info.tm_min;
-  int s = info.tm_sec;
-  if (state==-1) { // Init
-    for(eventpos=0;eventpos<sizeof(events);eventpos++) {
-      int hh = events[eventpos][0];
-      int mm = events[eventpos][1];
-      if (hh*60+mm>h*60+m) {
-        Serial.println(String("Found time ")+hh+":"+mm+"  now "+h+":"+m);
-        if (eventpos==0) {
-          state=0;
-        } else {
-          hh = events[eventpos-1][0];
-          mm = events[eventpos-1][1];
-          Serial.println(String("Last event time ")+hh+":"+mm+"  now "+h+":"+m);
-          startms = millis()-1000L*(3600L*h+m*60+s-(3600L*hh+60*mm));
-          duration = events[eventpos-1][2]*60L*1000L;
-          state = 2;
-        }
-        break;
-      }
-    }
-  } else {
-    if (events[eventpos][0]==h && events[eventpos][1]==m) {
-      startms = millis();
-      duration = 1000L*60L*events[eventpos][2];
-      state = 2;
-      eventpos++;
-      if (eventpos==sizeof(events)) {
-        eventpos = 0;
-      }
-    }
-  }
-}
-
-void smoothout(int s) {
-  for (int i=PixelCount-1; i>=s; i--) {
-    float d = hues[i-1]-hues[i];
-    if (d>0.5) d=-1.0+d;
-    if (d<-0.5) d=1+d;
-    vh[i] = 0.95*vh[i]+d/10000.0;
-    if (vh[i]>0.01) vh[i]=0.01;
-    if (vh[i]<-0.01) vh[i]=-0.01;
-    hues[i]+=vh[i];
-    if (hues[i]>1.0) hues[i]-=1.0;
-    if (hues[i]<0.0) hues[i]+=1.0;
-    strip.SetPixelColor(i,HslColor(hues[i], 1.0f,0.5f*brightness));
-  }
-  strip.Show();
-}
-
-
-
-
-
-long waitForIt(long step, long steps) {
-  long localms = duration*1.0*step/steps;
-  long waituntil = startms+localms;
-  waituntil -= millis();
-  if (waituntil<0) waituntil=0;
-  return waituntil;
-}
-
-float getBr(int j) {
-  float r = (5-j)/5.0f;
-  return r*r;
-}
-
-void showMustGoOn() {
-  Serial.println(String("showMustGoOn start=")+startms+" duration="+duration+"   millis()="+millis());
-  long steps = 150*151/2;
-  long step = 0;
-  state = 1;
-  for (int last=PixelCount; last>0; last--) {
-    if (state!=1) break;
-    hues[last-1] = random(10000)/10000.0f;
-    vh[last-1] = 0.0;
-    HslColor c(hues[last-1], 1.0f, 0.5f*brightness);
-    if (waitForIt(step+last, steps)==0) {
-      strip.SetPixelColor(last-1, c);
-      step+=last;
-      Serial.println(String("Fast forward to step=")+step+" at last="+last+"  of steps="+steps);
-    } else {
-      Serial.println(String("Firing at last=")+last+" at step="+step+"  of steps="+steps);
-      for (int i=0; i<last; i++) {
-        if (state!=1) break;
-        step++;
-        strip.SetPixelColor(i,c);
-        for (int j=1; j<=5; j++) {
-          if (i-j>=0) {
-            HslColor c2 (hues[last-1], 1.0f, getBr(j)*0.5f*brightness);
-            strip.SetPixelColor(i-j,c2);
-          } else if (last<PixelCount) {
-            HslColor c2(hues[last], 1.0f, getBr(j)*0.5f*brightness);
-            strip.SetPixelColor(last+i-j,c2);
-          }
-        }
-        if (i>4) {
-          strip.SetPixelColor(i-5,black);
-        }
-        strip.Show();
-        timeKeeping(waitForIt(step, steps), last);
-      }
-    }
-  }
-  for (int i=0; i<PixelCount; i++) {
-    strip.SetPixelColor(i,black);
-  }
-  strip.Show();
-  
+  //sliderTest();
+  waitForTimeFix();
+  //fakeTime();
+  initHues();
+  state = -1;
 }
 
 void loop() {
-  state=-1; // Force initialisation
-  checkEvent();
-  if (state == 0) strip.ClearTo(black);
-  if (state==2) { 
-    showMustGoOn();
-    Serial.println(String("Show finished with state=")+state);
-  }  
-  timeKeeping(200,PixelCount);
+  paintStrip();
+  strip.Show();
+  delay(5);
 }
