@@ -69,24 +69,40 @@ int DCF77Simple::bcd(int start, int len, bool check) {
     if (!check || getBit(start+len)==parity) {
         return s;
     }
+    Serial.printf("parity check failed at start=%d, len=%d\n",start, len);
     return -1;
 }
 
 bool DCF77Simple::decode() {
-    if (lastData==0) return false;
-    if (getBit(0)!=0) return false;
-    if (getBit(20)!=1) return false;
+    if (lastData==0) {
+        Serial.println("No complete transmission yet");
+        return false;
+    }
+    if (getBit(0)!=0) {
+        Serial.println("Startbit is not zero");
+        return false;
+    }
+    if (getBit(20)!=1) {
+        Serial.println("Startbit of date info is not 1");
+        return false;
+    }
     timeInfo.change = getBit(16);
     timeInfo.cest = getBit(17);
     timeInfo.mez = getBit(18);
     timeInfo.swtch = getBit(19);
     timeInfo.minute = bcd(21,7, true);
+    if (timeInfo.minute<0) {
+        return false;
+    }
     timeInfo.hour = bcd(29,6, true);
+    if (timeInfo.hour<0) {
+        return false;
+    }
     timeInfo.day = bcd(36,6);
     timeInfo.weekday = bcd(42,3);
     timeInfo.month = bcd(45,5);
     timeInfo.year = 2000+bcd(50,8);
-    int ms = millis()-lastData;
+    long unsigned ms = millis()-lastData;
     // Set ms and seconds, correct for overflow
     timeInfo.ms = ms%1000;
     ms/=1000;
@@ -109,9 +125,7 @@ void DCF77Simple::showData() {
         Serial.println("Current Data is not valid!");
         return;
     }
-    unsigned long ms = millis()-lastData;
-
-    printf("change: %d, CEST: %d, MEZ: %d, switch: %d\n %02d:%02d:%02lu.%03lu %04d-%02d-%02d wday=%d\n",
+    printf("change: %d, CEST: %d, MEZ: %d, switch: %d\n %02d:%02d:%02d.%03d %04d-%02d-%02d wday=%d\n",
     timeInfo.change, timeInfo.cest, timeInfo.mez, timeInfo.swtch,
     timeInfo.hour, timeInfo.minute, timeInfo.second, timeInfo.ms,
     timeInfo.year, timeInfo.month, timeInfo.day, timeInfo.weekday

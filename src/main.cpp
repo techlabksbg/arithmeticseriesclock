@@ -41,14 +41,13 @@ int events[][3] = {
     {16,33,45},  
     {17,18,5},   // hours, minutes, duration
     {17,23,45},
-    /*
     {18,8,5},
     {18,13,45},
     {18,58,5},
     {19,03,45},
     {19,48,5},
-    {20,53,45},
-    {21,38,5} */
+    {19,53,45},
+    {20,38,5},
 };
   
 
@@ -92,21 +91,35 @@ struct slider {
     }
 };
 
+void printLocalTime() {
+  struct tm timeinfo;
+  if(!getLocalTime(&timeinfo)){
+    Serial.println("Failed to obtain time");
+    return;
+  }
+  Serial.println(&timeinfo, "%A, %B %d %Y %H:%M:%S");
+}
 
+unsigned long lastData = 0;
 
 void dcf2esp() {
   if (DCF77.decode()) {
+    DCF77.showData();
+    lastData = DCF77.lastData;
     tm local;
     local.tm_year = DCF77.timeInfo.year - 1900;
     local.tm_mon = DCF77.timeInfo.month-1;
+    local.tm_mday = DCF77.timeInfo.day;
     local.tm_hour = DCF77.timeInfo.hour;
     local.tm_min = DCF77.timeInfo.minute;
     local.tm_sec = DCF77.timeInfo.second;
-    const time_t sec = mktime(&local);
+    const time_t sec = mktime(&local)+3600;
     timeval tv;
     tv.tv_sec = sec;
+    Serial.printf("Have sec=%ld\n", sec);
     tv.tv_usec = 1000*DCF77.timeInfo.ms;
     settimeofday(&tv, NULL);
+    printLocalTime();
   }
 }
 
@@ -116,9 +129,9 @@ void fakeTime() {
     local.tm_mon = 0;
     local.tm_mday = 16;
     
-    local.tm_hour = 15;
-    local.tm_min = 33; // 41;
-    local.tm_sec = 0;
+    local.tm_hour = 20;
+    local.tm_min = 42; // 41;
+    local.tm_sec = 50;
     const time_t sec = mktime(&local);
     timeval tv;//= {tv_sec=sec, tv_usec=0};
     tv.tv_sec = sec;
@@ -126,6 +139,7 @@ void fakeTime() {
 
     Serial.printf("Have sec=%ld\n", sec);
     settimeofday(&tv, NULL);
+    printLocalTime();
 }
 
 void waitForTimeFix()
@@ -139,15 +153,15 @@ void waitForTimeFix()
         DCF77.status2Serial();
       }
       if (DCF77.nr != -1) {
-        strip.SetPixelColor(pos, RgbColor(128, 0, 0));
+        strip.SetPixelColor(pos, RgbColor(12, 0, 0));
       } else {
-        strip.SetPixelColor(pos, RgbColor(64, 64, 0));
+        strip.SetPixelColor(pos, RgbColor(6, 6, 0));
       }
     } else { // LOW
       if (DCF77.nr != -1) {
-        strip.SetPixelColor(pos, RgbColor(0, 128, 0));
+        strip.SetPixelColor(pos, RgbColor(0, 12, 0));
       } else {
-        strip.SetPixelColor(pos, RgbColor(0, 0, 64));
+        strip.SetPixelColor(pos, RgbColor(0, 0, 6));
       }
     }
     pos++;
@@ -224,7 +238,7 @@ float getCurrentT() {
   gettimeofday(&tv_now, NULL);
   
   int daymins = info.tm_hour*60+info.tm_min;
-  for(int i=0;i<sizeof(events);i++) {
+  for(int i=0;i<sizeof(events)/12;i++) {
     int mins = events[i][0]*60+events[i][1];
     if (daymins>=mins && daymins<mins+events[i][2]) {
       return ((info.tm_hour*60+info.tm_min-mins)*60+info.tm_sec+tv_now.tv_usec/1e6)/(events[i][2]*60);
@@ -319,10 +333,13 @@ void setup() {
   waitForTimeFix();
   //fakeTime();
   initHues();
-  state = -1;
 }
 
 void loop() {
+  if (DCF77.lastData!=lastData) {
+    dcf2esp();
+    lastData = DCF77.lastData;
+  }
   paintStrip();
   strip.Show();
   delay(5);
