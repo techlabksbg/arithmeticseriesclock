@@ -46,12 +46,12 @@ int events[][3] = {
     {17,18,5},   // hours, minutes, duration
     {17,23,45},
     {18,8,5},
-    {18,13,45},
+    /* {18,13,45},
     {18,58,5},
     {19,03,45},
     {19,48,5},
     {19,53,45},
-    {20,38,5},
+    {20,38,5}, */
 };
   
 
@@ -236,6 +236,9 @@ void sliderTest() {
 
 // Get t in [0,1] of the current period (or -1 if none applies)
 float getCurrentT() {
+  if (DCF77.timeInfo.weekday>5) { // lights off on weekends
+    return -1;
+  }
   time_t now;
   time(&now);
   struct tm  info;
