@@ -110,13 +110,14 @@ void dcf2esp() {
     DCF77.showData();
     lastData = DCF77.lastData;
     tm local;
+    local.tm_isdst = DCF77.timeInfo.daylightSaving;
     local.tm_year = DCF77.timeInfo.year - 1900;
     local.tm_mon = DCF77.timeInfo.month-1;
     local.tm_mday = DCF77.timeInfo.day;
     local.tm_hour = DCF77.timeInfo.hour;
     local.tm_min = DCF77.timeInfo.minute;
     local.tm_sec = DCF77.timeInfo.second;
-    const time_t sec = mktime(&local)+3600;
+    const time_t sec = mktime(&local);
     timeval tv;
     tv.tv_sec = sec;
     Serial.printf("Have sec=%ld\n", sec);
@@ -135,6 +136,8 @@ void fakeTime() {
     local.tm_hour = 20;
     local.tm_min = 42; // 41;
     local.tm_sec = 50;
+
+    local.tm_isdst = 0;  // No daylight saving time right now
     const time_t sec = mktime(&local);
     timeval tv;//= {tv_sec=sec, tv_usec=0};
     tv.tv_sec = sec;

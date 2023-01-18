@@ -86,9 +86,16 @@ bool DCF77Simple::decode() {
         Serial.println("Startbit of date info is not 1");
         return false;
     }
-    timeInfo.change = getBit(16);
+    timeInfo.daylightSavingChangeAtEndOfHour = getBit(16);
+    // See https://de.wikipedia.org/wiki/DCF77#Signal
     timeInfo.cest = getBit(17);
     timeInfo.mez = getBit(18);
+    timeInfo.daylightSaving = -1;
+    if (timeInfo.cest==0 && timeInfo.mez==1) {
+        timeInfo.daylightSaving = 0;
+    } else if (timeInfo.cest==1 && timeInfo.mez==0) {
+        timeInfo.daylightSaving = 1;
+    }
     timeInfo.swtch = getBit(19);
     timeInfo.minute = bcd(21,7, true);
     if (timeInfo.minute<0) {
@@ -125,8 +132,8 @@ void DCF77Simple::showData() {
         Serial.println("Current Data is not valid!");
         return;
     }
-    printf("change: %d, CEST: %d, MEZ: %d, switch: %d\n %02d:%02d:%02d.%03d %04d-%02d-%02d wday=%d\n",
-    timeInfo.change, timeInfo.cest, timeInfo.mez, timeInfo.swtch,
+    printf("changeAtEndOfHour: %d, CEST: %d, MEZ: %d, daylightSaving: %d, leapSecond: %d\n %02d:%02d:%02d.%03d %04d-%02d-%02d wday=%d\n",
+    timeInfo.daylightSavingChangeAtEndOfHour, timeInfo.cest, timeInfo.mez, timeInfo.daylightSaving, timeInfo.swtch,
     timeInfo.hour, timeInfo.minute, timeInfo.second, timeInfo.ms,
     timeInfo.year, timeInfo.month, timeInfo.day, timeInfo.weekday
     );

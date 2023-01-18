@@ -19,7 +19,8 @@ struct DCF77Simple {
     struct {
        int cest;
        int mez;
-       int change;
+       int daylightSavingChangeAtEndOfHour;
+       int daylightSaving;
        int swtch; 
        int ms;
        int second;
