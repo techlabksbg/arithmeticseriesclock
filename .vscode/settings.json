@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+        "*.tcc": "cpp",
+        "iosfwd": "cpp",
+        "limits": "cpp",
+        "functional": "cpp"
+    }
+}
