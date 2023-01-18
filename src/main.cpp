@@ -7,7 +7,11 @@
 #include "NeoPixelBus.h"
 #include "esp_adc_cal.h"
 
+#define LED_PIN 13
+#define DCF77_PIN 22
+#define BRIGHTNESS_PIN 34
 
+// DCF77 pins are: VCC, GND, SIGNAL, EN (tie to GND)
 
 RgbColor black(0,0,0);
 const uint16_t PixelCount = 150; 
@@ -52,11 +56,10 @@ int events[][3] = {
   
 
 
-#define PIN 13
 //Adafruit_NeoPixel strip(PixelCount, PIN, NEO_RGB + NEO_KHZ800);
 // Uses GPIO2 alias D4
 //NeoPixelBus<NeoGrbFeature, Neo800KbpsMethod> strip(PixelCount, 42); // pin is ignored
-NeoPixelBus<NeoRgbFeature, NeoEsp32I2s1800KbpsMethod> strip(PixelCount, PIN);
+NeoPixelBus<NeoRgbFeature, NeoEsp32I2s1800KbpsMethod> strip(PixelCount, LED_PIN);
 
 
 float hues[PixelCount];
@@ -210,7 +213,7 @@ void diffuse(int n) {
   for (int i=n+1; i<150; i++) {
     float t = 0.01;
     hues[i] = hsvInterpolate(hues[i], hues[i-1], t);
-    strip.SetPixelColor(i, HslColor(hues[i], 1.0, brightness));
+    strip.SetPixelColor(i, HslColor(hues[i], 1.0, 0.5*brightness));
   }
 }
 
@@ -328,7 +331,7 @@ void setup() {
   setenv("TZ", "CET-1CEST,M3.5.0/2,M10.5.0/ 3", 1); // https://www.gnu.org/software/libc/manual/html_node/TZ-Variable.html
   tzset();
 
-  DCF77.begin(5);
+  DCF77.begin(DCF77_PIN);
   //sliderTest();
   waitForTimeFix();
   //fakeTime();
@@ -336,6 +339,7 @@ void setup() {
 }
 
 void loop() {
+  brightness = 0.98*brightness + 0.02*(analogRead(BRIGHTNESS_PIN)/4096.0*0.95+0.05);
   if (DCF77.lastData!=lastData) {
     dcf2esp();
     lastData = DCF77.lastData;
